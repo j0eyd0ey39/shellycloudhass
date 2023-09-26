@@ -1,0 +1,8 @@
+{
+  "name": "Shelly Cloud",
+  "iot_class": "Cloud Polling",
+  "homeassistant": "2023.9.3",
+  "hide_default_branch": true,
+  "zip_release": false,
+  "filename": "shellycloudhass.zip"
+}

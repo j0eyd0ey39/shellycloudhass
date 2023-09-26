@@ -1,0 +1,16 @@
+{
+  "domain": "shelly_cloud",
+  "name": "Shelly Cloud",
+  "codeowners": [
+    "@j0eyd0ey39"
+  ],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/j0eyd0ey39/shellycloudhass/blob/main/README.md",
+  "homekit": {},
+  "integration_type": "hub",
+  "iot_class": "cloud_polling",
+  "requirements": [],
+  "ssdp": [],
+  "zeroconf": []
+}
