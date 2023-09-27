@@ -73,6 +73,9 @@ class ShellyTempSensor(CoordinatorEntity, SensorEntity):
         super().__init__(coordinator, context=shellyId)
         self._attr_device_id = shellyId
         self._attr_name = "Shelly Temp " + shellyId
+        self._attr_native_value = self.coordinator.data[self._attr_device_id]["tmp"][
+            "value"
+        ]
         _LOGGER.debug("Shelly sensor created")
 
     _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
@@ -112,6 +115,9 @@ class ShellyHumiditySensor(CoordinatorEntity, SensorEntity):
         super().__init__(coordinator, context=shellyId)
         self._attr_device_id = shellyId
         self._attr_name = "Shelly Humidity " + shellyId
+        self._attr_native_value = self.coordinator.data[self._attr_device_id]["hum"][
+            "value"
+        ]
         _LOGGER.debug("Shelly sensor created")
 
     _attr_native_unit_of_measurement = PERCENTAGE
