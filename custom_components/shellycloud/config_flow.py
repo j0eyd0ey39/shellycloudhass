@@ -13,42 +13,28 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
 
-from .const import DOMAIN
+from homeassistant.const import CONF_SCAN_INTERVAL
+
+from .const import DOMAIN, DEFAULT_SCAN_INTERVAL, MIN_SCAN_INTERVAL
 
 _LOGGER = logging.getLogger(__name__)
 
-# TODO adjust the data schema to the data that you need
-STEP_USER_DATA_SCHEMA = vol.Schema(
-    {
-        vol.Required("server", default="shelly-32-eu"): str,
-        vol.Required("token"): str,
-    }
-)
-
 
 class PlaceholderHub:
-    """Placeholder class to make tests pass.
-
-    TODO Remove this placeholder class and replace with things from your PyPI package.
-    """
-
     def __init__(self, server: str) -> None:
         """Initialize."""
         self.server = server
 
     async def authenticate(self, token: str) -> bool:
         """Test if we can authenticate with the host."""
-        self.token = token
-        url = 'https://' + self.server + '.shelly.cloud/device/all_status'        
-        params = {"auth_key":token}
-        text = ""
+        url = "https://" + self.server + ".shelly.cloud/device/all_status"
+        params = {"auth_key": token}
         async with aiohttp.ClientSession() as session:
             async with session.post(url, params=params) as resp:
                 if not resp.status == 200:
                     _LOGGER.critical(resp)
                     return False
-                text = await resp.text()
-        
+
         return True
 
 
@@ -57,16 +43,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
 
     Data has the keys from STEP_USER_DATA_SCHEMA with values provided by the user.
     """
-    # TODO validate the data can be used to set up a connection.
-
-    # If your PyPI package is not built with async, pass your methods
-    # to the executor:
-    # await hass.async_add_executor_job(
-    #     your_validate_func, data["username"], data["password"]
-    # )
-
     hub = PlaceholderHub(data["server"])
-    hub.hass = hass
 
     if not await hub.authenticate(data["token"]):
         raise InvalidAuth
@@ -77,9 +54,11 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     # InvalidAuth
 
     # Return info that you want to store in the config entry.
-    return {"title": "Shelly Cloud Integration",
-            "server": data["server"],
-            "token": data["token"]}
+    return {
+        "title": "Shelly Cloud Integration",
+        "server": data["server"],
+        "token": data["token"],
+    }
 
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -105,8 +84,19 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             else:
                 return self.async_create_entry(title=info["title"], data=user_input)
 
+        dataSchema = vol.Schema(
+            {
+                vol.Required(
+                    "update_interval",
+                    default=DEFAULT_SCAN_INTERVAL,
+                ): vol.All(vol.Coerce(int), vol.Range(min=MIN_SCAN_INTERVAL, max=900)),
+                vol.Required("server", default="shelly-32-eu"): str,
+                vol.Required("token"): str,
+            }
+        )
+
         return self.async_show_form(
-            step_id="user", data_schema=STEP_USER_DATA_SCHEMA, errors=errors
+            step_id="user", data_schema=dataSchema, errors=errors
         )
 
 

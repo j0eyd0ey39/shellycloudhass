@@ -6,27 +6,31 @@ import aiohttp
 import threading
 import json
 
+import async_timeout
+
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
     SensorStateClass,
 )
 from homeassistant.const import UnitOfTemperature, PERCENTAGE
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.config_entries import ConfigEntry
 from datetime import timedelta
-from datetime import datetime
 
 from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.update_coordinator import (
+    CoordinatorEntity,
+    DataUpdateCoordinator,
+)
 
 from .const import (
     DOMAIN,
- )
+)
 
 _LOGGER = logging.getLogger(__name__)
 
-SCAN_INTERVAL = timedelta(seconds=10)
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -34,148 +38,154 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     _LOGGER.info("async setup entry called, title:" + config_entry.title)
-    """Set up the sensor platform."""
-    cloudUpdater = ShellyCloudUpdater(config_entry.data["server"],config_entry.data["token"] )
-    await cloudUpdater.async_updateAll()
-    shellies = cloudUpdater.listShellyHTDevices()
+    # Set up the sensor platform.
+
+    coordinator = ShellyCloudCoordinator(
+        hass,
+        config_entry.data["server"],
+        config_entry.data["token"],
+        config_entry.data["update_interval"],
+    )
+    await coordinator.async_config_entry_first_refresh()
+    shellies = coordinator.listShellyHTDevices()
 
     entities = []
     for shelly in shellies:
-        entities.append(ShellyTempSensor(shelly, cloudUpdater))
-        entities.append(ShellyHumiditySensor(shelly, cloudUpdater))
-    
+        entities.append(ShellyTempSensor(shelly, coordinator))
+        entities.append(ShellyHumiditySensor(shelly, coordinator))
+
     async_add_entities(entities)
-    _LOGGER.info("async setup entry finished, server:"+config_entry.data["server"]+" token:"+config_entry.data["token"])
-    
+    _LOGGER.debug(
+        "async setup entry finished, server:"
+        + config_entry.data["server"]
+        + " token:"
+        + config_entry.data["token"]
+        + " update interval:"
+        + str(config_entry.data["update_interval"])
+    )
 
-class ShellyTempSensor(SensorEntity):
+
+class ShellyTempSensor(CoordinatorEntity, SensorEntity):
     """Representation of a Shelly Sensor."""
-    def __init__(self, id, cloudUpdater) -> None:
-        self._attr_cloudUpdater = cloudUpdater
-        self._attr_device_id = id
-        self._attr_name = "Shelly Temp "+id
-        self._attr_native_value = cloudUpdater.getTemperature(self._attr_device_id)
-        _LOGGER.info("shelly sensor created")
 
-    
+    def __init__(self, shellyId, coordinator) -> None:
+        """Pass coordinator to CoordinatorEntity."""
+        super().__init__(coordinator, context=shellyId)
+        self._attr_device_id = shellyId
+        self._attr_name = "Shelly Temp " + shellyId
+        _LOGGER.debug("Shelly sensor created")
+
     _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
     _attr_device_class = SensorDeviceClass.TEMPERATURE
     _attr_state_class = SensorStateClass.MEASUREMENT
-    
+
     @property
     def unique_id(self) -> str | None:
-        return self._attr_device_id+"tmp"
+        return self._attr_device_id + "tmp"
 
     @property
     def device_info(self) -> DeviceInfo:
         """Return the device info."""
         return DeviceInfo(
-            identifiers={                    
-                (DOMAIN, self._attr_device_id)                
-            },
-            name="H&T "+self._attr_device_id,
+            identifiers={(DOMAIN, self._attr_device_id)},
+            name="H&T " + self._attr_device_id,
             model="H&T",
             suggested_area="Kitchen",
             manufacturer="Shelly",
         )
 
-    async def async_update(self) -> None:
-        """Fetch new state data for the sensor.
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
+        self._attr_native_value = self.coordinator.data[self._attr_device_id]["tmp"][
+            "value"
+        ]
+        _LOGGER.debug("Shelly sensor polled")
+        self.async_write_ha_state()
 
-        This is the only method that should fetch new data for Home Assistant.
-        """        
-        await self._attr_cloudUpdater.async_update()
-        self._attr_native_value = self._attr_cloudUpdater.getTemperature(self._attr_device_id)
-        _LOGGER.info("shelly sensor polled")
 
-class ShellyHumiditySensor(SensorEntity):
+class ShellyHumiditySensor(CoordinatorEntity, SensorEntity):
     """Representation of a Shelly Sensor."""
-    def __init__(self, id, cloudUpdater) -> None:
-        self._attr_cloudUpdater = cloudUpdater
-        self._attr_device_id = id
-        self._attr_name = "Shelly Humidity "+id
-        self._attr_native_value = cloudUpdater.getHumidity(id)
-        _LOGGER.info("shelly sensor created")
 
-    
+    def __init__(self, shellyId, coordinator) -> None:
+        """Pass coordinator to CoordinatorEntity."""
+        super().__init__(coordinator, context=shellyId)
+        self._attr_device_id = shellyId
+        self._attr_name = "Shelly Humidity " + shellyId
+        _LOGGER.debug("Shelly sensor created")
+
     _attr_native_unit_of_measurement = PERCENTAGE
     _attr_device_class = SensorDeviceClass.HUMIDITY
     _attr_state_class = SensorStateClass.MEASUREMENT
-    
+
     @property
     def unique_id(self) -> str | None:
-        return self._attr_device_id+"hum"
+        return self._attr_device_id + "hum"
 
     @property
     def device_info(self) -> DeviceInfo:
         """Return the device info."""
-        return DeviceInfo(            
-            identifiers={                    
-                (DOMAIN, self._attr_device_id)                
-            },
-            name="H&T "+self._attr_device_id,
+        return DeviceInfo(
+            identifiers={(DOMAIN, self._attr_device_id)},
+            name="H&T " + self._attr_device_id,
             model="H&T",
             suggested_area="Kitchen",
-            manufacturer="Shelly",            
+            manufacturer="Shelly",
         )
 
-    async def async_update(self) -> None:
-        """Fetch new state data for the sensor.
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
+        self._attr_native_value = self.coordinator.data[self._attr_device_id]["hum"][
+            "value"
+        ]
+        _LOGGER.debug("Shelly sensor polled")
+        self.async_write_ha_state()
 
-        This is the only method that should fetch new data for Home Assistant.
-        """        
-        await self._attr_cloudUpdater.async_update()
-        self._attr_native_value = self._attr_cloudUpdater.getHumidity(self._attr_device_id)
-        _LOGGER.info("shelly sensor polled")
 
-class ShellyCloudUpdater:    
-    def __init__(self, server, token) -> None:
-        self._attr_lock = threading.RLock()
+class ShellyCloudCoordinator(DataUpdateCoordinator):
+    """Shelly cloud custom coordinator."""
+
+    def __init__(self, hass: HomeAssistant, server, token, update_interval) -> None:
+        """Initialize my coordinator."""
+        super().__init__(
+            hass,
+            _LOGGER,
+            # Name of the data. For logging purposes.
+            name="ShellyCloudCoordinator",
+            # Polling interval. Will only be polled if there are subscribers.
+            update_interval=timedelta(seconds=update_interval),
+        )
         self._attr_server = server
         self._attr_token = token
-        self._attr_last_updated = datetime.now()-2*SCAN_INTERVAL
 
-    async def async_update(self) -> None:
-        """ Fetch shelly cloud info if scan interval has passed """
-        with self._attr_lock:
-          last_updated = self._attr_last_updated
-          if datetime.now() - last_updated > SCAN_INTERVAL:
-              _LOGGER.info("it is time to update")
-              self._attr_last_updated = datetime.now()
-              await self.async_updateAll()          
+    async def _async_update_data(self):
+        """Fetch data from API endpoint.
 
-    async def async_updateAll(self) -> None:
-        url = 'https://' + self._attr_server + '.shelly.cloud/device/all_status'        
-        params = {"auth_key":self._attr_token}
-        text = ""
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, params=params) as resp:
-                if not resp.status == 200:
-                    _LOGGER.critical(resp)
-                    return
-                text = await resp.text()
+        This is the place to pre-process the data to lookup tables
+        so entities can quickly look up their data.
+        """
+        # Note: asyncio.TimeoutError and aiohttp.ClientError are already
+        # handled by the data update coordinator.
+        async with async_timeout.timeout(10):
+            url = "https://" + self._attr_server + ".shelly.cloud/device/all_status"
+            params = {"auth_key": self._attr_token}
+            text = ""
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, params=params) as resp:
+                    if not resp.status == 200:
+                        _LOGGER.critical(resp)
+                        return
+                    text = await resp.text()
 
-        jsonData = json.loads(text)
-        
-        if jsonData["isok"] == True:
-            data = jsonData["data"]
-            with self._attr_lock:
-              self._attr_devices_status = data["devices_status"]
+            jsonData = json.loads(text)
+            if jsonData["isok"] == True:
+                return jsonData["data"]["devices_status"]
 
-    def getTemperature(self, id):
-        with self._attr_lock:
-          return self._attr_devices_status[id]["tmp"]["value"]
-    
-    def getHumidity(self, id):
-        with self._attr_lock:
-          return self._attr_devices_status[id]["hum"]["value"]
-    
     def listShellyHTDevices(self):
         shellies = []
-        with self._attr_lock:
-          for key in self._attr_devices_status:
-              if self._attr_devices_status[key]["getinfo"]["fw_info"]["device"].startswith("shellyht-"):
-                  shellies.append(key)
-        
+        for key in self.data:
+            if self.data[key]["getinfo"]["fw_info"]["device"].startswith("shellyht-"):
+                shellies.append(key)
+
         return shellies
- 

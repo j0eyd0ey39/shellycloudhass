@@ -3,6 +3,7 @@
     "step": {
       "user": {
         "data": {
+          "update_interval": "foobar",
           "server": "[%key:common::config_flow::data::server%]",
           "token": "[%key:common::config_flow::data::token%]"
         }
