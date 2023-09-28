@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import logging
 import aiohttp
-import threading
 import json
 
 import async_timeout
@@ -65,60 +64,51 @@ async def async_setup_entry(
     )
 
 
-class ShellyTempSensor(CoordinatorEntity, SensorEntity):
-    """Representation of a Shelly Sensor."""
+class ShellyBaseDevice(CoordinatorEntity):
+    """Representation of a Shelly Device"""
 
-    def __init__(self, shellyId, coordinator) -> None:
+    def __init__(self, shellyId, deviceModelName, coordinator) -> None:
         """Pass coordinator to CoordinatorEntity."""
         super().__init__(coordinator, context=shellyId)
         self._attr_device_id = shellyId
-        self._attr_name = "Shelly Temp " + shellyId
-        self._attr_native_value = self.coordinator.data[self._attr_device_id]["tmp"][
-            "value"
-        ]
-        _LOGGER.debug("Shelly sensor created")
-
-    _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
-    _attr_device_class = SensorDeviceClass.TEMPERATURE
-    _attr_state_class = SensorStateClass.MEASUREMENT
-
-    @property
-    def unique_id(self) -> str | None:
-        return self._attr_device_id + "tmp"
+        self._attr_device_model = deviceModelName
+        self._attr_sw_version = self.coordinator.data[self._attr_device_id]["getinfo"][
+            "fw_info"
+        ]["fw"]
 
     @property
     def device_info(self) -> DeviceInfo:
         """Return the device info."""
         return DeviceInfo(
             identifiers={(DOMAIN, self._attr_device_id)},
-            name="H&T " + self._attr_device_id,
-            model="H&T",
+            name=self._attr_device_model + " " + self._attr_device_id,
+            model=self._attr_device_model,
             suggested_area="Kitchen",
             manufacturer="Shelly",
+            sw_version=self._attr_sw_version,
         )
 
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        """Handle updated data from the coordinator."""
-        self._attr_native_value = self.coordinator.data[self._attr_device_id]["tmp"][
-            "value"
-        ]
-        _LOGGER.debug("Shelly sensor polled")
-        self.async_write_ha_state()
+
+class ShellyHTDevice(ShellyBaseDevice):
+    """Representation of a Shelly H&T Device"""
+
+    def __init__(self, shellyId, coordinator) -> None:
+        """Pass coordinator to Shelly base device"""
+        super().__init__(shellyId, "H&T", coordinator)
 
 
-class ShellyHumiditySensor(CoordinatorEntity, SensorEntity):
+class ShellyHumiditySensor(SensorEntity, ShellyHTDevice):
     """Representation of a Shelly Sensor."""
 
     def __init__(self, shellyId, coordinator) -> None:
-        """Pass coordinator to CoordinatorEntity."""
-        super().__init__(coordinator, context=shellyId)
+        """Pass coordinator to parent."""
+        super().__init__(shellyId, coordinator)
         self._attr_device_id = shellyId
         self._attr_name = "Shelly Humidity " + shellyId
         self._attr_native_value = self.coordinator.data[self._attr_device_id]["hum"][
             "value"
         ]
-        _LOGGER.debug("Shelly sensor created")
+        _LOGGER.debug("Shelly humidity sensor created")
 
     _attr_native_unit_of_measurement = PERCENTAGE
     _attr_device_class = SensorDeviceClass.HUMIDITY
@@ -128,24 +118,44 @@ class ShellyHumiditySensor(CoordinatorEntity, SensorEntity):
     def unique_id(self) -> str | None:
         return self._attr_device_id + "hum"
 
-    @property
-    def device_info(self) -> DeviceInfo:
-        """Return the device info."""
-        return DeviceInfo(
-            identifiers={(DOMAIN, self._attr_device_id)},
-            name="H&T " + self._attr_device_id,
-            model="H&T",
-            suggested_area="Kitchen",
-            manufacturer="Shelly",
-        )
-
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
         self._attr_native_value = self.coordinator.data[self._attr_device_id]["hum"][
             "value"
         ]
-        _LOGGER.debug("Shelly sensor polled")
+        _LOGGER.debug("Shelly humidity sensor polled")
+        self.async_write_ha_state()
+
+
+class ShellyTempSensor(SensorEntity, ShellyHTDevice):
+    """Representation of a Shelly Sensor."""
+
+    def __init__(self, shellyId, coordinator) -> None:
+        """Pass coordinator to parent."""
+        super().__init__(shellyId, coordinator)
+        self._attr_device_id = shellyId
+        self._attr_name = "Shelly Temp " + shellyId
+        self._attr_native_value = self.coordinator.data[self._attr_device_id]["tmp"][
+            "value"
+        ]
+        _LOGGER.debug("Shelly temperature sensor created")
+
+    _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+    _attr_device_class = SensorDeviceClass.TEMPERATURE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    @property
+    def unique_id(self) -> str | None:
+        return self._attr_device_id + "tmp"
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
+        self._attr_native_value = self.coordinator.data[self._attr_device_id]["tmp"][
+            "value"
+        ]
+        _LOGGER.debug("Shelly temp sensor polled")
         self.async_write_ha_state()
 
 

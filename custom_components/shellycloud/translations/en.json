@@ -11,7 +11,7 @@
         "step": {
             "user": {
                 "data": {
-                    "update_interval": "Cloud polling interval",
+                    "update_interval": "Cloud polling interval (seconds)",
                     "server": "Shelly server name (example: shelly-32-eu)",
                     "token": "Token from shelly App"
                 }
